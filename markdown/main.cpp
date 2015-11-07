@@ -167,6 +167,10 @@ void StartBlock(int block)
 {
     if (allowChanges) {
         Indent(outFile, indentN++);
+        if (block == CBLOCK) {
+            fprintf(outFile, "<%s>\n", tags[block+1]);
+            Indent(outFile, indentN++);
+        }
         fprintf(outFile, "<%s>\n", tags[currentBlock=block]);
     }
 }
@@ -176,6 +180,10 @@ void TerminateBlock()
     if (allowChanges && currentBlock) {
         Indent(outFile, --indentN);
         fprintf(outFile, "</%s>\n", tags[currentBlock]);
+        if (currentBlock == CBLOCK) {
+            Indent(outFile, --indentN);
+            fprintf(outFile, "</%s>\n", tags[currentBlock+1]);
+        }
         currentBlock = 0;
     }
 }
