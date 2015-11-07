@@ -27,14 +27,15 @@
 void Indent(FILE *f, int n);
 char *StripNL(char *s);
 int ResolveBlock(char *s);
-void StartBlock();
+void StartBlock(int block);
 void TerminateBlock();
 
 
 int currentBlock = 0;
 int indentN = 0;
+int allowChanges = 0;
 FILE *outFile, *markdownFile;
-char *tags[] = {"", "p", "blockquote", "pre", "code", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
+char const *tags[] = {"", "p", "blockquote", "pre", "code", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 
 int main(int argc, const char * argv[])
 {
@@ -45,6 +46,7 @@ int main(int argc, const char * argv[])
     char line[1024];
     char nextLine[16];
     int trimStart = 0;
+    int nextStart = 0;
     
     
     if (argc<3 || (outFile=fopen(argv[1], "w"))==NULL || (markdownFile=fopen(argv[2], "r"))==NULL)
@@ -52,29 +54,43 @@ int main(int argc, const char * argv[])
     
     fprintf(outFile, "%s", header);
     while (fgets(line, 1024, markdownFile)) {
+        allowChanges = 1;
         trimStart = ResolveBlock(line);
         if (trimStart>=0) {
             Indent(outFile, indentN);
             fprintf(outFile, "%s", StripNL(line+trimStart));
             
             fgetpos(markdownFile, &cursor);
+            
             fgets(nextLine, 16, markdownFile);
-            if (currentBlock!=PARAGRAPH || nextLine[0]=='\n' || feof(markdownFile) || ResolveBlock(nextLine)>0) {
+            
+            allowChanges = 0;
+            if (feof(markdownFile)) {
                 fprintf(outFile, "\n");
             }
             else {
-                fprintf(outFile, "<br />\n");
+                nextStart = ResolveBlock(nextLine);
+                if (currentBlock==PARAGRAPH) {
+                    if (nextStart==0)
+                        fprintf(outFile, "<br />\n");
+                    else if (nextStart!=0)
+                        fprintf(outFile, "\n");
+                }
+                else {
+                    fprintf(outFile, "\n");
+                }
             }
-            
             fsetpos(markdownFile, &cursor);
         }
         
         
     }
+    allowChanges = 1;
     TerminateBlock();
     fprintf(outFile, "%s", footer);
     
-    
+    fclose(outFile);
+    fclose(markdownFile);
     return 0;
 }
 
@@ -105,12 +121,12 @@ int ResolveBlock(char *s)
                 TerminateBlock();
             }
             modifier = -1;
+            break;
         case '>':
-            if (s[1]==' ' && currentBlock!=QBLOCK) {
-                TerminateBlock();
-                currentBlock = QBLOCK;
-                StartBlock();
+            if (!strncmp(s, "> ", 2) && currentBlock!=QBLOCK) {
                 modifier = 2;
+                TerminateBlock();
+                StartBlock(QBLOCK);
             }
             break;
         case '`':
@@ -120,8 +136,7 @@ int ResolveBlock(char *s)
                 }
                 else {
                     TerminateBlock();
-                    currentBlock = CBLOCK;
-                    StartBlock();
+                    StartBlock(CBLOCK);
                 }
             }
             modifier = -1;
@@ -134,35 +149,32 @@ int ResolveBlock(char *s)
                 modifier += 1;
             }
             TerminateBlock();
-            currentBlock = H1+(modifier-1);
-            StartBlock();
+            StartBlock(H1+(modifier-1));
             break;
         default:
             if (currentBlock>1 && currentBlock!=CBLOCK)
                 TerminateBlock();
             if (!currentBlock) {
-                currentBlock = PARAGRAPH;
-                StartBlock();
+                StartBlock(PARAGRAPH);
             }
-            
             break;
     }
-    
+    allowChanges = 0;
     return modifier;
 }
 
-void StartBlock()
+void StartBlock(int block)
 {
-    Indent(outFile, indentN);
-    fprintf(outFile, "<%s>\n", tags[currentBlock]);
-    ++indentN;
+    if (allowChanges) {
+        Indent(outFile, indentN++);
+        fprintf(outFile, "<%s>\n", tags[currentBlock=block]);
+    }
 }
 
 void TerminateBlock()
 {
-    if (currentBlock) {
-        --indentN;
-        Indent(outFile, indentN);
+    if (allowChanges && currentBlock) {
+        Indent(outFile, --indentN);
         fprintf(outFile, "</%s>\n", tags[currentBlock]);
         currentBlock = 0;
     }
