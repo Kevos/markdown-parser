@@ -21,12 +21,16 @@ int main(int argc, const char * argv[])
     FILE *outFile, *markdownFile;
     char header[] = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>{TEST}</title>\n\t</head>\n\t<body>\n";
     char footer[] = "\t</body>\n</html>";
-    int indent = 2;
+    int indentN = 2;
+    char line[1024];
     if (argc<3 || (outFile=fopen(argv[1], "w"))==NULL || (markdownFile=fopen(argv[2], "r"))==NULL)
         return 1;
     
     fprintf(outFile, "%s", header);
-    
+    while (fgets(line, 1024, markdownFile)) {
+        Indent(outFile, indentN);
+        fprintf(outFile, "%s", line);
+    }
     
     fprintf(outFile, "%s", footer);
     
