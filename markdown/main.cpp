@@ -9,6 +9,17 @@
 #include <iostream>
 #include <cstdio>
 
+char *StripNL(char *s)
+{
+    for (int i=(int)strlen(s)-1; i >=0; --i) {
+        if (s[i]=='\n') {
+            s[i] = '\0';
+            break;
+        }
+    }
+    return s;
+}
+
 void Indent(FILE *f, int n)
 {
     for (int i=0; i<n; i++) {
