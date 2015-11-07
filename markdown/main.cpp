@@ -43,6 +43,7 @@ int main(int argc, const char * argv[])
     char footer[] = "\t</body>\n</html>";
     fpos_t cursor;
     char line[1024];
+    char nextLine[16];
     int trimStart = 0;
     
     
@@ -57,8 +58,8 @@ int main(int argc, const char * argv[])
             fprintf(outFile, "%s", StripNL(line+trimStart));
             
             fgetpos(markdownFile, &cursor);
-            
-            if (fgetc(markdownFile)=='\n' || feof(markdownFile)) {
+            fgets(nextLine, 16, markdownFile);
+            if (currentBlock!=PARAGRAPH || nextLine[0]=='\n' || feof(markdownFile) || ResolveBlock(nextLine)>0) {
                 fprintf(outFile, "\n");
             }
             else {
@@ -118,14 +119,26 @@ int ResolveBlock(char *s)
                     TerminateBlock();
                 }
                 else {
+                    TerminateBlock();
                     currentBlock = CBLOCK;
                     StartBlock();
                 }
             }
-            modifier = 3;
+            modifier = -1;
+            break;
+        case '#':
+            modifier = 1;
+            for (int i=1; i<6; ++i) {
+                if (s[i] != '#')
+                    break;
+                modifier += 1;
+            }
+            TerminateBlock();
+            currentBlock = H1+(modifier-1);
+            StartBlock();
             break;
         default:
-            if (currentBlock>1)
+            if (currentBlock>1 && currentBlock!=CBLOCK)
                 TerminateBlock();
             if (!currentBlock) {
                 currentBlock = PARAGRAPH;
