@@ -64,7 +64,6 @@ int main(int argc, const char * argv[])
             
             fgets(nextLine, 16, markdownFile);
             
-            allowChanges = 0;
             if (feof(markdownFile)) {
                 fprintf(outFile, "\n");
             }
@@ -146,10 +145,12 @@ int ResolveBlock(char *s)
             for (int i=1; i<6; ++i) {
                 if (s[i] != '#')
                     break;
-                modifier += 1;
+                ++modifier;
             }
             TerminateBlock();
             StartBlock(H1+(modifier-1));
+            if (s[modifier]==' ')
+                ++modifier;
             break;
         default:
             if (currentBlock>1 && currentBlock!=CBLOCK)
@@ -159,6 +160,8 @@ int ResolveBlock(char *s)
             }
             break;
     }
+    if (currentBlock!=CBLOCK && modifier>=0 && s[modifier]==' ')
+        ++modifier;
     allowChanges = 0;
     return modifier;
 }
