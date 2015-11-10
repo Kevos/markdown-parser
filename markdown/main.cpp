@@ -29,6 +29,7 @@ char *StripNL(char *s);
 int ResolveBlock(char *s);
 void StartBlock(int block);
 void TerminateBlock();
+void WriteLine(char *s);
 
 
 int currentBlock = 0;
@@ -64,7 +65,7 @@ int main(int argc, const char * argv[])
         trimStart = ResolveBlock(line);
         if (trimStart>=0) {
             Indent(outFile, indentN);
-            fprintf(outFile, "%s", StripNL(line+trimStart));
+            WriteLine(line+trimStart);
             
             fgetpos(markdownFile, &cursor);
             
@@ -195,4 +196,9 @@ void TerminateBlock()
         }
         currentBlock = 0;
     }
+}
+
+void WriteLine(char *s)
+{
+    fprintf(outFile, "%s", StripNL(s));
 }
