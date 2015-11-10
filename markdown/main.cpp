@@ -40,7 +40,8 @@ char const *tags[] = {"", "p", "blockquote", "pre", "code", "", "", "", "", "", 
 int main(int argc, const char * argv[])
 {
     
-    char header[] = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>{TEST}</title>\n\t</head>\n\t<body>\n";
+    char header1[] = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>{TEST}</title>\n";
+    char header2[] = "\t</head>\n\t<body>\n";
     char footer[] = "\t</body>\n</html>";
     fpos_t cursor;
     char line[1024];
@@ -52,7 +53,12 @@ int main(int argc, const char * argv[])
     if (argc<3 || (outFile=fopen(argv[1], "w"))==NULL || (markdownFile=fopen(argv[2], "r"))==NULL)
         return 1;
     
-    fprintf(outFile, "%s", header);
+    fprintf(outFile, "%s", header1);
+    
+    for (int i=3; i<argc; ++i) {
+        fprintf(outFile, "\t\t<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
+    }
+    fprintf(outFile, "%s", header2);
     while (fgets(line, 1024, markdownFile)) {
         allowChanges = 1;
         trimStart = ResolveBlock(line);
@@ -122,8 +128,8 @@ int ResolveBlock(char *s)
             modifier = -1;
             break;
         case '>':
-            if (!strncmp(s, "> ", 2) && currentBlock!=QBLOCK) {
-                modifier = 2;
+            modifier = 1;
+            if (currentBlock!=QBLOCK) {
                 TerminateBlock();
                 StartBlock(QBLOCK);
             }
