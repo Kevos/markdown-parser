@@ -27,8 +27,9 @@ void Indent(FILE *f, int n);
 char *StripNL(char *s);
 int ResolveBlock(char *s);
 void StartBlock(int block);
-void TerminateBlock();
+void TerminateBlock(void);
 void WriteLine(char *s);
+void TerminateLine(void);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 int const baseIndent = 2;
@@ -45,11 +46,8 @@ int main(int argc, const char * argv[])
     char header1[] = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>{TEST}</title>\n";
     char header2[] = "\t</head>\n\t<body>\n";
     char footer[] = "\t</body>\n</html>";
-    fpos_t cursor;
     char line[1024];
-    char nextLine[16];
     int trimStart = 0;
-    int nextStart = 0;
     
     
     if (argc<3 || (outFile=fopen(argv[1], "w"))==NULL || (markdownFile=fopen(argv[2], "r"))==NULL)
@@ -57,7 +55,7 @@ int main(int argc, const char * argv[])
     
     fprintf(outFile, "%s", header1);
     
-    for (int i=3; i<argc; ++i)
+    for (int i=argc-1; i>2; --i)
         fprintf(outFile, "\t\t<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
     fprintf(outFile, "%s", header2);
     
@@ -67,7 +65,6 @@ int main(int argc, const char * argv[])
         if (currentBlock==CBLOCK && strncmp(line, "```", 3)) {
             allowChanges = 0;
             ResolveBlock(line);
-//            Indent(outFile, indentN);
             WriteLine(line);
             fprintf(outFile, "\n");
             continue;
@@ -77,30 +74,8 @@ int main(int argc, const char * argv[])
         if (trimStart>=0) {
             Indent(outFile, indentN);
             WriteLine(line+trimStart);
-            
-            fgetpos(markdownFile, &cursor);
-            
-            fgets(nextLine, 16, markdownFile);
-            
-            if (feof(markdownFile)) {
-                fprintf(outFile, "\n");
-            }
-            else {
-                nextStart = ResolveBlock(nextLine);
-                if (currentBlock==PARAGRAPH) {
-                    if (nextStart==0)
-                        fprintf(outFile, "<br />\n");
-                    else if (nextStart!=0)
-                        fprintf(outFile, "\n");
-                }
-                else {
-                    fprintf(outFile, "\n");
-                }
-            }
-            fsetpos(markdownFile, &cursor);
+            TerminateLine();
         }
-        
-        
     }
     allowChanges = 1;
     TerminateBlock();
@@ -196,7 +171,7 @@ void StartBlock(int block)
     }
 }
 
-void TerminateBlock()
+void TerminateBlock(void)
 {
     if (allowChanges && currentBlock) {
         Indent(outFile, --indentN);
@@ -260,26 +235,19 @@ void WriteLine(char *s)
                         isBL = 0;
                     }
                     else if (i+1<strlen(s) && s[i+1]=='*') {
-                        if (isBold) {
+                        if (isBold)
                             fprintf(outFile, "</span>");
-                            isBold = 0;
-                            ++i;
-                        }
-                        else {
+                        else
                             fprintf(outFile, "<span style=\"font-weight: bold\">");
-                            isBold = 1;
-                            ++i;
-                        }
+                        isBold = !isBold;
+                        ++i;
                     }
                     else {
-                        if (isItalic) {
+                        if (isItalic)
                             fprintf(outFile, "</span>");
-                            isItalic = 0;
-                        }
-                        else {
+                        else
                             fprintf(outFile, "<span style=\"font-style: italic\">");
-                            isItalic = 1;
-                        }
+                        isItalic = !isItalic;
                     }
                     break;
                 default:
@@ -300,4 +268,31 @@ void WriteLine(char *s)
     }
 }
 
+void TerminateLine(void)
+{
+    char nextLine[16];
+    int nextStart;
+    fpos_t cursor;
+    
+    fgetpos(markdownFile, &cursor);
+    
+    fgets(nextLine, 16, markdownFile);
+    
+    if (feof(markdownFile)) {
+        fprintf(outFile, "\n");
+    }
+    else {
+        nextStart = ResolveBlock(nextLine);
+        if (currentBlock==PARAGRAPH) {
+            if (nextStart==0)
+                fprintf(outFile, "<br />\n");
+            else if (nextStart!=0)
+                fprintf(outFile, "\n");
+        }
+        else {
+            fprintf(outFile, "\n");
+        }
+    }
+    fsetpos(markdownFile, &cursor);
+}
 
