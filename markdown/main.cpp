@@ -8,8 +8,7 @@
 
 #include <iostream>
 #include <cstdio>
-
-#define BASEINDENT 2
+#include <cstring>
 
 #define PARAGRAPH 0x01
 
@@ -31,12 +30,14 @@ void StartBlock(int block);
 void TerminateBlock();
 void WriteLine(char *s);
 
+char const *tags[] = {"", "p", "blockquote", "code", "pre", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
+int const baseIndent = 2;
 
 int currentBlock = 0;
+int currentLine = 0;
 int indentN = 0;
 int allowChanges = 0;
 FILE *outFile, *markdownFile;
-char const *tags[] = {"", "p", "blockquote", "pre", "code", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 
 int main(int argc, const char * argv[])
 {
@@ -56,11 +57,21 @@ int main(int argc, const char * argv[])
     
     fprintf(outFile, "%s", header1);
     
-    for (int i=3; i<argc; ++i) {
+    for (int i=3; i<argc; ++i)
         fprintf(outFile, "\t\t<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
-    }
     fprintf(outFile, "%s", header2);
+    
+    
     while (fgets(line, 1024, markdownFile)) {
+        ++currentLine;
+        if (currentBlock==CBLOCK && strncmp(line, "```", 3)) {
+            allowChanges = 0;
+            ResolveBlock(line);
+//            Indent(outFile, indentN);
+            WriteLine(line);
+            fprintf(outFile, "\n");
+            continue;
+        }
         allowChanges = 1;
         trimStart = ResolveBlock(line);
         if (trimStart>=0) {
@@ -102,7 +113,7 @@ int main(int argc, const char * argv[])
 
 void Indent(FILE *f, int n)
 {
-    for (int i=0; i<n+BASEINDENT; i++) {
+    for (int i=0; i<n+baseIndent; i++) {
         fprintf(f, "\t");
     }
 }
@@ -200,5 +211,93 @@ void TerminateBlock()
 
 void WriteLine(char *s)
 {
-    fprintf(outFile, "%s", StripNL(s));
+    int isBold = 0, isItalic = 0, isCode = 0, isBL = 0;
+    
+    StripNL(s);
+    
+    if (currentBlock==CBLOCK) {
+        for (int i=0; i<strlen(s); ++i) {
+            switch (s[i]) {
+                case '<':
+                    fprintf(outFile, "&lt;");
+                    break;
+                case '>':
+                    fprintf(outFile, "&gt;");
+                    break;
+                case '&':
+                    fprintf(outFile, "&amp;");
+                    break;
+                default:
+                    fputc(s[i], outFile);
+                    break;
+            }
+        }
+//        fprintf(outFile, "%s", s);
+        return;
+    }
+    
+    for (int i=0; i<strlen(s); ++i) {
+        if (!isCode || s[i]=='`') {
+            switch (s[i]) {
+                case '\\':
+                    fputc(s[++i], outFile);
+                    break;
+                case '`':
+                    fprintf(outFile, "<%scode>", isCode?"/":"");
+                    isCode = !isCode;
+                    break;
+                case '_':
+                    if (!strncmp(s+i, "_**", 3) && !isBL) {
+                        fprintf(outFile, "<span style=\"font-weight: bold; font-style: italic\">");
+                        i += 2;
+                        isBL = 1;
+                    }
+                    break;
+                case '*':
+                    if (!strncmp(s+i, "**_", 3) && isBL) {
+                        fprintf(outFile, "</span>");
+                        i += 2;
+                        isBL = 0;
+                    }
+                    else if (i+1<strlen(s) && s[i+1]=='*') {
+                        if (isBold) {
+                            fprintf(outFile, "</span>");
+                            isBold = 0;
+                            ++i;
+                        }
+                        else {
+                            fprintf(outFile, "<span style=\"font-weight: bold\">");
+                            isBold = 1;
+                            ++i;
+                        }
+                    }
+                    else {
+                        if (isItalic) {
+                            fprintf(outFile, "</span>");
+                            isItalic = 0;
+                        }
+                        else {
+                            fprintf(outFile, "<span style=\"font-style: italic\">");
+                            isItalic = 1;
+                        }
+                    }
+                    break;
+                default:
+                    fputc(s[i], outFile);
+                    break;
+            }
+        }
+        else
+            fputc(s[i], outFile);
+    }
+    
+    for (int i=0; i<isBold+isItalic+isBL; ++i) {
+        fprintf(outFile, "</span>");
+    }
+    
+    if (isCode) {
+        std::cout << "WARNING (Line " << currentLine << ") -> No closing `\n";
+    }
 }
+
+
