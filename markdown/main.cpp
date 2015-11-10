@@ -49,9 +49,20 @@ int main(int argc, const char * argv[])
     char line[1024];
     int trimStart = 0;
     
-    
-    if (argc<3 || (outFile=fopen(argv[1], "w"))==NULL || (markdownFile=fopen(argv[2], "r"))==NULL)
+    if (argc<3) {
+        std::cout << "Too few arguments. Usage: " << argv[0] << " fOut fIn [style1 style2 ...]\n";
         return 1;
+    }
+    if ((markdownFile=fopen(argv[2], "r"))==NULL) {
+        std::cout << "Error opening " << argv[2] << " for reading\n";
+        return 1;
+    }
+    if ((outFile=fopen(argv[1], "w"))==NULL) {
+        std::cout << "Error opening " << argv[1] << " for writing\n";
+        fclose(markdownFile);
+        return 1;
+    }
+    
     
     fprintf(outFile, "%s", header1);
     
@@ -186,7 +197,7 @@ void TerminateBlock(void)
 
 void WriteLine(char *s)
 {
-    int isBold = 0, isItalic = 0, isCode = 0, isBL = 0;
+    int isBold = 0, isItalic = 0, isCode = 0, isBL = 0, isStrike = 0;
     
     StripNL(s);
     
@@ -207,7 +218,6 @@ void WriteLine(char *s)
                     break;
             }
         }
-//        fprintf(outFile, "%s", s);
         return;
     }
     
@@ -218,12 +228,12 @@ void WriteLine(char *s)
                     fputc(s[++i], outFile);
                     break;
                 case '`':
-                    fprintf(outFile, "<%scode>", isCode?"/":"");
+                    fprintf(outFile, "<%scode%s>", isCode?"/":"", isCode?"":" class=\"code-inline\"");
                     isCode = !isCode;
                     break;
                 case '_':
                     if (!strncmp(s+i, "_**", 3) && !isBL) {
-                        fprintf(outFile, "<span style=\"font-weight: bold; font-style: italic\">");
+                        fprintf(outFile, "<span class=\"span-bold span-italic\" style=\"font-weight: bold; font-style: italic\">");
                         i += 2;
                         isBL = 1;
                     }
@@ -238,7 +248,7 @@ void WriteLine(char *s)
                         if (isBold)
                             fprintf(outFile, "</span>");
                         else
-                            fprintf(outFile, "<span style=\"font-weight: bold\">");
+                            fprintf(outFile, "<span class=\"span-bold\" style=\"font-weight: bold\">");
                         isBold = !isBold;
                         ++i;
                     }
@@ -246,8 +256,18 @@ void WriteLine(char *s)
                         if (isItalic)
                             fprintf(outFile, "</span>");
                         else
-                            fprintf(outFile, "<span style=\"font-style: italic\">");
+                            fprintf(outFile, "<span class=\"span-italic\" style=\"font-style: italic\">");
                         isItalic = !isItalic;
+                    }
+                    break;
+                case '~':
+                    if (i+1<strlen(s) && s[i+1]=='~') {
+                        if (isStrike)
+                            fprintf(outFile, "</span>");
+                        else
+                            fprintf(outFile, "<span class=\"span-strikethough\" style=\"text-decoration: line-through\">");
+                        isStrike = !isStrike;
+                        ++i;
                     }
                     break;
                 default:
@@ -259,7 +279,7 @@ void WriteLine(char *s)
             fputc(s[i], outFile);
     }
     
-    for (int i=0; i<isBold+isItalic+isBL; ++i) {
+    for (int i=0; i<isBold+isItalic+isBL+isStrike; ++i) {
         fprintf(outFile, "</span>");
     }
     
