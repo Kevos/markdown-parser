@@ -26,7 +26,7 @@
 void Indent(FILE *f, int n);
 char *StripNL(char *s);
 int ResolveBlock(char *s);
-void StartBlock(int block);
+void StartBlock(int block, char *className, char *styles);
 void TerminateBlock(void);
 void WriteLine(char *s);
 void TerminateLine(void);
@@ -65,7 +65,6 @@ int main(int argc, const char * argv[])
     
     
     fprintf(outFile, "%s", header1);
-    
     for (int i=argc-1; i>2; --i)
         fprintf(outFile, "\t\t<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
     fprintf(outFile, "%s", header2);
@@ -118,28 +117,40 @@ char *StripNL(char *s)
 int ResolveBlock(char *s)
 {
     int modifier = 0;
+    int changeBlock = 0;
+    int newBlock = 0;
+    char className[64] = {0};
+    char styles[1024] = {0};
+    char *p;
+    
     switch (s[0]) {
         case '\n':
             if (!strcmp(s, "\n")) {
-                TerminateBlock();
+//                TerminateBlock();
+                changeBlock = 1;
             }
             modifier = -1;
             break;
         case '>':
             modifier = 1;
             if (currentBlock!=QBLOCK) {
-                TerminateBlock();
-                StartBlock(QBLOCK);
+//                TerminateBlock();
+//                StartBlock(QBLOCK);
+                changeBlock = 2;
+                newBlock = QBLOCK;
             }
             break;
         case '`':
             if (!strncmp(s, "```", 3)) {
                 if (currentBlock==CBLOCK) {
-                    TerminateBlock();
+//                    TerminateBlock();
+                    changeBlock = 1;
                 }
                 else {
-                    TerminateBlock();
-                    StartBlock(CBLOCK);
+//                    TerminateBlock();
+//                    StartBlock(CBLOCK);
+                    changeBlock = 2;
+                    newBlock = CBLOCK;
                 }
             }
             modifier = -1;
@@ -151,34 +162,63 @@ int ResolveBlock(char *s)
                     break;
                 ++modifier;
             }
-            TerminateBlock();
-            StartBlock(H1+(modifier-1));
-            if (s[modifier]==' ')
-                ++modifier;
+//            TerminateBlock();
+//            StartBlock(H1+(modifier-1));
+            changeBlock = 2;
+            newBlock = H1+(modifier-1);
             break;
         default:
-            if (currentBlock>1 && currentBlock!=CBLOCK)
-                TerminateBlock();
+            if (currentBlock>1 && currentBlock!=CBLOCK) {
+//                TerminateBlock();
+                changeBlock = 1;
+            }
             if (!currentBlock) {
-                StartBlock(PARAGRAPH);
+//                StartBlock(PARAGRAPH);
+                ++changeBlock;
+                newBlock = PARAGRAPH;
             }
             break;
     }
+    
+    if (s[modifier]=='[' && (p=strchr(s+modifier, ']'))!=NULL) {
+        strncpy(className, s+modifier+1, p-(s+modifier+1));
+        modifier = (int)(p-s)+1;
+        printf("class=\"%s\", modifier=%d, text=%s", className, modifier, s+modifier);
+    }
+    
+    if (s[modifier]=='{' && (p=strchr(s+modifier, '}'))!=NULL) {
+        strncpy(styles, s+modifier+1, p-(s+modifier+1));
+        modifier = (int)(p-s)+1;
+        printf("style=\"%s\", modifier=%d, text=%s", styles, modifier, s+modifier);
+    }
+    
+    
     if (currentBlock!=CBLOCK && modifier>=0 && s[modifier]==' ')
         ++modifier;
+    
+    
+    if (changeBlock) {
+        TerminateBlock();
+        --changeBlock;
+        if (changeBlock) {
+            StartBlock(newBlock, className, styles);
+        }
+    }
     allowChanges = 0;
     return modifier;
 }
 
-void StartBlock(int block)
+void StartBlock(int block, char *className, char *styles)
 {
+    int isClass = strcmp(className, "");
+    int isStyles = strcmp(styles, "");
     if (allowChanges) {
         Indent(outFile, indentN++);
         if (block == CBLOCK) {
             fprintf(outFile, "<%s>\n", tags[block+1]);
             Indent(outFile, indentN++);
         }
-        fprintf(outFile, "<%s>\n", tags[currentBlock=block]);
+        fprintf(outFile, "<%s%s%s%s%s%s%s>\n", tags[currentBlock=block], isClass?" class=\"":"", isClass?className:"", isClass?"\"":"", isStyles?" style=\"":"", isStyles?styles:"", isStyles?"\"":"");
     }
 }
 
