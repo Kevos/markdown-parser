@@ -6,6 +6,11 @@
 //
 //
 
+extern "C"
+{
+#include "LibStack.h"
+}
+
 #include <iostream>
 #include <cstdio>
 #include <cstring>
