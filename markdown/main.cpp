@@ -30,6 +30,8 @@ void StartBlock(int block, char *className, char *styles);
 void TerminateBlock(void);
 void WriteLine(char *s);
 void TerminateLine(void);
+int IsWhitespace(char c);
+int IsListElement(char *s);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 int const baseIndent = 2;
@@ -43,11 +45,12 @@ FILE *outFile, *markdownFile;
 int main(int argc, const char * argv[])
 {
     
-    char header1[] = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>{TEST}</title>\n";
-    char header2[] = "\t</head>\n\t<body>\n";
-    char footer[] = "\t</body>\n</html>";
+//    char header1[] = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>{TEST}</title>\n";
+//    char header2[] = "\t</head>\n\t<body>\n";
+//    char footer[] = "\t</body>\n</html>";
     char line[1024];
     int trimStart = 0;
+    char *documentTitle = NULL;
     
     if (argc<3) {
         std::cout << "Too few arguments. Usage: " << argv[0] << " fOut fIn [style1 style2 ...]\n";
@@ -63,14 +66,20 @@ int main(int argc, const char * argv[])
         return 1;
     }
     
+    fgets(line, 1024, markdownFile);
+    if (!strncmp(line, "@@ ", 3)) {
+        documentTitle = line+3;
+    }
     
-    fprintf(outFile, "%s", header1);
+    fprintf(outFile, "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>%s</title>\n", documentTitle!=NULL?StripNL(documentTitle):"**Untitled**");
     for (int i=argc-1; i>2; --i)
         fprintf(outFile, "\t\t<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
-    fprintf(outFile, "%s", header2);
+    fprintf(outFile, "\t</head>\n\t<body>\n");
     
+    if (documentTitle)
+        fgets(line, 1024, markdownFile);
     
-    while (fgets(line, 1024, markdownFile)) {
+     do {
         ++currentLine;
         if (currentBlock==CBLOCK && strncmp(line, "```", 3)) {
             allowChanges = 0;
@@ -86,10 +95,10 @@ int main(int argc, const char * argv[])
             WriteLine(line+trimStart);
             TerminateLine();
         }
-    }
+     } while (fgets(line, 1024, markdownFile));
     allowChanges = 1;
     TerminateBlock();
-    fprintf(outFile, "%s", footer);
+    fprintf(outFile, "\t</body>\n</html>");
     
     fclose(outFile);
     fclose(markdownFile);
@@ -126,7 +135,6 @@ int ResolveBlock(char *s)
     switch (s[0]) {
         case '\n':
             if (!strcmp(s, "\n")) {
-//                TerminateBlock();
                 changeBlock = 1;
             }
             modifier = -1;
@@ -134,8 +142,6 @@ int ResolveBlock(char *s)
         case '>':
             modifier = 1;
             if (currentBlock!=QBLOCK) {
-//                TerminateBlock();
-//                StartBlock(QBLOCK);
                 changeBlock = 2;
                 newBlock = QBLOCK;
             }
@@ -143,12 +149,9 @@ int ResolveBlock(char *s)
         case '`':
             if (!strncmp(s, "```", 3)) {
                 if (currentBlock==CBLOCK) {
-//                    TerminateBlock();
                     changeBlock = 1;
                 }
                 else {
-//                    TerminateBlock();
-//                    StartBlock(CBLOCK);
                     changeBlock = 2;
                     newBlock = CBLOCK;
                 }
@@ -162,47 +165,43 @@ int ResolveBlock(char *s)
                     break;
                 ++modifier;
             }
-//            TerminateBlock();
-//            StartBlock(H1+(modifier-1));
             changeBlock = 2;
             newBlock = H1+(modifier-1);
             break;
         default:
             if (currentBlock>1 && currentBlock!=CBLOCK) {
-//                TerminateBlock();
                 changeBlock = 1;
             }
             if (!currentBlock) {
-//                StartBlock(PARAGRAPH);
                 ++changeBlock;
                 newBlock = PARAGRAPH;
             }
             break;
     }
     
-    if (s[modifier]=='[' && (p=strchr(s+modifier, ']'))!=NULL) {
-        strncpy(className, s+modifier+1, p-(s+modifier+1));
-        modifier = (int)(p-s)+1;
-        printf("class=\"%s\", modifier=%d, text=%s", className, modifier, s+modifier);
+    if (modifier>=0) {
+        if (s[modifier]=='[' && (p=strchr(s+modifier, ']'))!=NULL) {
+            strncpy(className, s+modifier+1, p-(s+modifier+1));
+            modifier = (int)(p-s)+1;
+        }
+        
+        if (s[modifier]=='{' && (p=strchr(s+modifier, '}'))!=NULL) {
+            strncpy(styles, s+modifier+1, p-(s+modifier+1));
+            modifier = (int)(p-s)+1;
+        }
+        
+        if (currentBlock!=CBLOCK && modifier>=0 && s[modifier]==' ')
+            ++modifier;
     }
     
-    if (s[modifier]=='{' && (p=strchr(s+modifier, '}'))!=NULL) {
-        strncpy(styles, s+modifier+1, p-(s+modifier+1));
-        modifier = (int)(p-s)+1;
-        printf("style=\"%s\", modifier=%d, text=%s", styles, modifier, s+modifier);
-    }
     
-    
-    if (currentBlock!=CBLOCK && modifier>=0 && s[modifier]==' ')
-        ++modifier;
     
     
     if (changeBlock) {
         TerminateBlock();
-        --changeBlock;
-        if (changeBlock) {
-            StartBlock(newBlock, className, styles);
-        }
+    }
+    if (newBlock) {
+        StartBlock(newBlock, className, styles);
     }
     allowChanges = 0;
     return modifier;
@@ -356,3 +355,20 @@ void TerminateLine(void)
     fsetpos(markdownFile, &cursor);
 }
 
+int IsWhitespace(char c)
+{
+    char whiteChars[] = {0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0};
+    for (int i=0; i<strlen(whiteChars); ++i) {
+        if (c==whiteChars[i])
+            return 1;
+    }
+    return 0;
+}
+
+int IsListElement(char *s)
+{
+    int offset = 0;
+    while (IsWhitespace(s[offset]))
+        ++offset;
+    return -1;
+}
