@@ -12,32 +12,27 @@
 #include <cstring>
 
 enum block_enum {
-    blockNone=0x00, blockP, blockQuote, blockCode, blockPre, blockH1=0x0A, blockH2, blockH3, blockH4, blockH5, blockH6, blockHtml=0x30, blockHead, blockBody
+    blockNone=0x00, blockP, blockQuote, blockCode, blockPre, blockUl, blockOl, blockH1=0x0A, blockH2, blockH3, blockH4, blockH5, blockH6, blockHtml=0x30, blockHead, blockBody
 };
 
-void Indent();
+void Indent(void);
 char *StripNL(char *s);
+int IsNumber(char c);
 int ResolveBlock(char *s);
-//void StartBlock(int block, char *className, char *styles);
-//void TerminateBlock(void);
 void WriteLine(char *s);
 void TerminateLine(void);
 int IsWhitespace(char c);
-int IsListElement(char *s);
+int IsListElement(char *s, int *level);
 void AddToBlockStack(block_enum block, char *className, char *styles);
-void RemoveFromBlockStack();
+void RemoveFromBlockStack(int n);
 
-char const *tags[] = {"", "p", "blockquote", "code", "pre", "", "", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
+char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body"};
-//int const baseIndent = 2;
-//int currentBlock = 0;
-int currentLine = 0;
-int indentN = 0;
-int allowChanges = 0;
+int currentLine = 0, allowChanges = 0, listLevel = 0;
 FILE *outFile, *markdownFile;
 std::stack<block_enum> blockStack;
 
-void PrintStack()
+void PrintStack(void)
 {
     int h[32] = {-1};
     int size =(int)blockStack.size();
@@ -45,11 +40,11 @@ void PrintStack()
         h[i] = blockStack.top();
         blockStack.pop();
     }
-    printf("Line %d: ", currentLine);
+    printf("Line %02d: ", currentLine);
     if (!blockStack.empty())
         printf("NOT EMPTY, DUN GOOFED");
     for (int i=0; i<size; ++i) {
-        printf("%d, ", h[i]);
+        printf("%02d, ", h[i]);
         blockStack.push((block_enum)h[i]);
     }
     printf("\n");
@@ -92,7 +87,7 @@ int main(int argc, const char * argv[])
         Indent();
         fprintf(outFile, "<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
     }
-    RemoveFromBlockStack();
+    RemoveFromBlockStack(1);
     AddToBlockStack(blockBody, NULL, NULL);
     
     if (documentTitle)
@@ -100,7 +95,6 @@ int main(int argc, const char * argv[])
     
     do {
         ++currentLine;
-        PrintStack();
         if (blockStack.top()==blockCode && strncmp(line, "```", 3)) {
             allowChanges = 0;
             ResolveBlock(line);
@@ -116,14 +110,13 @@ int main(int argc, const char * argv[])
             TerminateLine();
         }
     } while (fgets(line, 1024, markdownFile));
-    while (blockStack.size())
-        RemoveFromBlockStack();
+    RemoveFromBlockStack((int)blockStack.size());
     fclose(outFile);
     fclose(markdownFile);
     return 0;
 }
 
-void Indent()
+void Indent(void)
 {
     if (!blockStack.empty()) {
         for (int i=0; i<(int)blockStack.size(); i++) {
@@ -141,6 +134,11 @@ char *StripNL(char *s)
         }
     }
     return s;
+}
+
+int IsNumber(char c)
+{
+    return c>='0'&&c<='9';
 }
 
 int ResolveBlock(char *s)
@@ -189,12 +187,36 @@ int ResolveBlock(char *s)
             newBlock = (block_enum)(blockH1+(modifier-1));
             break;
         default:
-            if (blockStack.top()>1 && blockStack.top()!=blockCode) {
-                changeBlock = 1;
+            int level = 0, listType = IsListElement(s, &level);
+            
+            if (listType) {
+                if (level>listLevel) {
+                    for (int i=listLevel; i>level; ++i) {
+                        AddToBlockStack(listType==1?blockUl:blockOl, NULL, NULL);
+                        newBlock = listType==1?blockUl:blockOl;
+                    }
+                }
+                else if (level<listLevel) {
+                    changeBlock = listLevel-level;
+                }
+                else {
+                    //same level
+                    if (blockStack.top()!=blockUl && blockStack.top()!=blockOl) {
+                        newBlock = listType==1?blockUl:blockOl;
+                    }
+                }
+                if (allowChanges)
+                    listLevel = level;
+                modifier = level;
             }
-            if (blockStack.top()<blockHtml) {
-                ++changeBlock;
-                newBlock = blockP;
+            else {
+                listLevel = 0;
+                if (blockStack.top()>1 && blockStack.top()!=blockCode && blockStack.top()<blockHtml) {
+                    changeBlock = 1;
+                }
+                if (blockStack.top()!=1) {
+                    newBlock = blockP;
+                }
             }
             break;
     }
@@ -217,9 +239,7 @@ int ResolveBlock(char *s)
     
     if (allowChanges) {
         if (changeBlock && blockStack.top()<0x30) {
-            RemoveFromBlockStack();
-            if (--changeBlock)
-                RemoveFromBlockStack();
+            RemoveFromBlockStack(changeBlock);
         }
         if (newBlock) {
             if (newBlock==blockCode) {
@@ -363,12 +383,29 @@ int IsWhitespace(char c)
     return 0;
 }
 
-int IsListElement(char *s)
+int IsListElement(char *s, int *level)
 {
+    int i=0;
     int offset = 0;
     while (IsWhitespace(s[offset]))
         ++offset;
-    return -1;
+    if (s[offset]=='-') {
+        *level=offset;
+        return 1;
+    }
+    else {
+        i = offset;
+        while (IsNumber(s[i]))
+            ++i;
+        if (!i || s[i]!='.') {
+            *level = 0;
+            return 0;
+        }
+        else {
+            *level = offset;
+            return 2;
+        }
+    }
 }
 
 void AddToBlockStack(block_enum block, char *className, char *styles)
@@ -379,14 +416,17 @@ void AddToBlockStack(block_enum block, char *className, char *styles)
     Indent();
     fprintf(outFile, "<%s%s%s%s%s%s%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block], isClass?" class=\"":"", isClass?className:"", isClass?"\"":"", isStyles?" style=\"":"", isStyles?styles:"", isStyles?"\"":"");
     blockStack.push(block);
-    
 }
 
-void RemoveFromBlockStack()
+void RemoveFromBlockStack(int n)
 {
-    block_enum block = blockStack.top();
+    block_enum block;
     
-    blockStack.pop();
-    Indent();
-    fprintf(outFile, "</%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block]);
+    for (int i=0; i<n; ++i) {
+        block = blockStack.top();
+        
+        blockStack.pop();
+        Indent();
+        fprintf(outFile, "</%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block]);
+    }
 }
