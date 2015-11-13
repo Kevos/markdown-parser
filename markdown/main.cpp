@@ -12,7 +12,7 @@
 #include <cstring>
 
 enum block_enum {
-    blockNone=0x00, blockP, blockQuote, blockCode, blockPre, blockUl, blockOl, blockH1=0x0A, blockH2, blockH3, blockH4, blockH5, blockH6, blockHtml=0x30, blockHead, blockBody
+    blockNone=0x00, blockP, blockQuote, blockCode, blockPre, blockUl, blockOl, blockLi, blockH1=0x0A, blockH2, blockH3, blockH4, blockH5, blockH6, blockHtml=0x30, blockHead, blockBody
 };
 
 void Indent(void);
@@ -22,11 +22,12 @@ int ResolveBlock(char *s);
 void WriteLine(char *s);
 void TerminateLine(void);
 int IsWhitespace(char c);
-int IsListElement(char *s, int *level);
+int IsListElement(char *s, int *level, int *cutOff);
+int IsListBlock(block_enum block);
 void AddToBlockStack(block_enum block, char *className, char *styles);
 void RemoveFromBlockStack(int n);
 
-char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
+char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body"};
 int currentLine = 0, allowChanges = 0, listLevel = 0;
 FILE *outFile, *markdownFile;
@@ -187,37 +188,40 @@ int ResolveBlock(char *s)
             newBlock = (block_enum)(blockH1+(modifier-1));
             break;
         default:
-            int level = 0, listType = IsListElement(s, &level);
+            int level = 0, listType = IsListElement(s, &level, &modifier);
             
             if (listType) {
                 if (level>listLevel) {
-                    for (int i=listLevel; i>level; ++i) {
+                    for (int i=listLevel; i<level; ++i) {
+                        if (!allowChanges)
+                            break;
                         AddToBlockStack(listType==1?blockUl:blockOl, NULL, NULL);
-                        newBlock = listType==1?blockUl:blockOl;
                     }
                 }
                 else if (level<listLevel) {
-                    changeBlock = listLevel-level;
+                    changeBlock = listLevel-level+1;
                 }
                 else {
-                    //same level
-                    if (blockStack.top()!=blockUl && blockStack.top()!=blockOl) {
-                        newBlock = listType==1?blockUl:blockOl;
+                    if (blockStack.top()==blockLi) {
+                        if (allowChanges)
+                            RemoveFromBlockStack(1);
+                        newBlock = blockLi;
                     }
                 }
-                if (allowChanges)
-                    listLevel = level;
-                modifier = level;
+                newBlock = blockLi;
             }
             else {
-                listLevel = 0;
+                while (allowChanges && IsListBlock(blockStack.top()))
+                    RemoveFromBlockStack(1);
                 if (blockStack.top()>1 && blockStack.top()!=blockCode && blockStack.top()<blockHtml) {
-                    changeBlock = 1;
+                    changeBlock += 1;
                 }
                 if (blockStack.top()!=1) {
                     newBlock = blockP;
                 }
             }
+            if (allowChanges)
+                listLevel = level;
             break;
     }
     
@@ -383,14 +387,15 @@ int IsWhitespace(char c)
     return 0;
 }
 
-int IsListElement(char *s, int *level)
+int IsListElement(char *s, int *level, int *cuttOff)
 {
     int i=0;
     int offset = 0;
     while (IsWhitespace(s[offset]))
         ++offset;
     if (s[offset]=='-') {
-        *level=offset;
+        *level = offset+1;
+        *cuttOff = offset+1;
         return 1;
     }
     else {
@@ -402,10 +407,16 @@ int IsListElement(char *s, int *level)
             return 0;
         }
         else {
-            *level = offset;
+            *level = offset+1;
+            *cuttOff = i+1;
             return 2;
         }
     }
+}
+
+int IsListBlock(block_enum block)
+{
+    return block==blockUl||block==blockOl||block==blockLi;
 }
 
 void AddToBlockStack(block_enum block, char *className, char *styles)
