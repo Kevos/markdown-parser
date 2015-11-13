@@ -26,6 +26,7 @@ int IsListElement(char *s, int *level, int *cutOff);
 int IsListBlock(block_enum block);
 void AddToBlockStack(block_enum block, char *className, char *styles);
 void RemoveFromBlockStack(int n);
+void ClearBlocks(void);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body"};
@@ -153,8 +154,8 @@ int ResolveBlock(char *s)
     
     switch (s[0]) {
         case '\n':
-            if (!strcmp(s, "\n")) {
-                changeBlock = 1;
+            if (!strcmp(s, "\n") && allowChanges) {
+                ClearBlocks();
             }
             modifier = -1;
             break;
@@ -191,6 +192,9 @@ int ResolveBlock(char *s)
             int level = 0, listType = IsListElement(s, &level, &modifier);
             
             if (listType) {
+                if (!listLevel) {
+                    ClearBlocks();
+                }
                 if (level>listLevel) {
                     for (int i=listLevel; i<level; ++i) {
                         if (!allowChanges)
@@ -199,13 +203,12 @@ int ResolveBlock(char *s)
                     }
                 }
                 else if (level<listLevel) {
-                    changeBlock = listLevel-level+1;
+                    changeBlock = (listLevel-level)*2;
                 }
                 else {
                     if (blockStack.top()==blockLi) {
                         if (allowChanges)
                             RemoveFromBlockStack(1);
-                        newBlock = blockLi;
                     }
                 }
                 newBlock = blockLi;
@@ -440,4 +443,11 @@ void RemoveFromBlockStack(int n)
         Indent();
         fprintf(outFile, "</%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block]);
     }
+}
+
+void ClearBlocks(void)
+{
+    while (blockStack.top()<blockHtml)
+        RemoveFromBlockStack(1);
+    listLevel = 0;
 }
