@@ -370,7 +370,13 @@ void TerminateLine(void)
         if (blockStack.top()==blockP) {
             if (nextStart==0)
                 fprintf(outFile, "<br />\n");
-            else if (nextStart!=0)
+            else
+                fprintf(outFile, "\n");
+        }
+        else if (blockStack.top()==blockQuote) {
+            if (nextLine[0]=='>')
+                fprintf(outFile, "<br />\n");
+            else
                 fprintf(outFile, "\n");
         }
         else {
