@@ -12,7 +12,7 @@
 #include <cstring>
 
 enum block_enum {
-    blockNone=0x00, blockP, blockQuote, blockCode, blockPre, blockUl, blockOl, blockLi, blockH1=0x0A, blockH2, blockH3, blockH4, blockH5, blockH6, blockHtml=0x30, blockHead, blockBody
+    blockNone=0x00, blockP, blockQuote, blockCode, blockPre, blockUl, blockOl, blockLi, blockH1=0x0A, blockH2, blockH3, blockH4, blockH5, blockH6, blockHtml=0x30, blockHead, blockBody, blockStyle
 };
 
 void Indent(void);
@@ -29,7 +29,7 @@ void RemoveFromBlockStack(int n);
 void ClearBlocks(void);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
-char const *templateTags[] = {"html", "head", "body"};
+char const *templateTags[] = {"html", "head", "body", "style"};
 int currentLine = 0, allowChanges = 0, listLevel = 0;
 FILE *outFile, *markdownFile;
 std::stack<block_enum> blockStack;
@@ -52,11 +52,12 @@ void PrintStack(void)
     printf("\n");
 }
 
-int main(int argc, const char * argv[])
+int main(int argc, const char *argv[])
 {
     char line[1024];
     int trimStart = 0;
     char *documentTitle = NULL;
+    int embeddedStyles;
     
     if (argc<3) {
         std::cout << "Too few arguments. Usage: " << argv[0] << " fOut fIn [style1 style2 ...]\n";
@@ -72,6 +73,8 @@ int main(int argc, const char * argv[])
         return 1;
     }
     
+    embeddedStyles = argc>3&&!strcmp(argv[argc-1], "-embed");
+    
     
     
     fprintf(outFile, "<!DOCTYPE html>\n");
@@ -85,11 +88,25 @@ int main(int argc, const char * argv[])
     
     Indent();
     fprintf(outFile, "<title>%s</title>\n", documentTitle!=NULL?StripNL(documentTitle):"**Untitled**");
-    for (int i=argc-1; i>2; --i) {
-        Indent();
-        fprintf(outFile, "<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
+    if (embeddedStyles)
+        AddToBlockStack(blockStyle, NULL, NULL);
+    for (int i=argc-embeddedStyles-1; i>2; --i) {
+        if (embeddedStyles) {
+            FILE *fTMP = fopen(argv[i], "r");
+            char buffer[1024];
+            if (fTMP) {
+                while (fgets(buffer, sizeof(buffer), fTMP)) {
+                    Indent();
+                    fprintf(outFile, "%s", buffer);
+                }
+            }
+        }
+        else {
+            Indent();
+            fprintf(outFile, "<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
+        }
     }
-    RemoveFromBlockStack(1);
+    RemoveFromBlockStack(1+embeddedStyles);
     AddToBlockStack(blockBody, NULL, NULL);
     
     if (documentTitle)
