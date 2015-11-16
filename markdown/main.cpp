@@ -24,9 +24,10 @@ void TerminateLine(void);
 int IsWhitespace(char c);
 int IsListElement(char *s, int *level, int *cutOff);
 int IsListBlock(block_enum block);
-void AddToBlockStack(block_enum block, char *className, char *styles);
+void AddToBlockStack(block_enum block, char *customisation);
 void RemoveFromBlockStack(int n);
 void ClearBlocks(void);
+int LinkPresent(char *s, char *linkName, char *linkURL, int *offset);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body", "style"};
@@ -78,8 +79,8 @@ int main(int argc, const char *argv[])
     
     
     fprintf(outFile, "<!DOCTYPE html>\n");
-    AddToBlockStack(blockHtml, NULL, NULL);
-    AddToBlockStack(blockHead, NULL, NULL);
+    AddToBlockStack(blockHtml, NULL);
+    AddToBlockStack(blockHead, NULL);
     
     fgets(line, 1024, markdownFile);
     if (!strncmp(line, "@@ ", 3)) {
@@ -88,17 +89,17 @@ int main(int argc, const char *argv[])
     
     Indent();
     fprintf(outFile, "<title>%s</title>\n", documentTitle!=NULL?StripNL(documentTitle):"**Untitled**");
-    if (embeddedStyles)
-        AddToBlockStack(blockStyle, NULL, NULL);
     for (int i=argc-embeddedStyles-1; i>2; --i) {
         if (embeddedStyles) {
             FILE *fTMP = fopen(argv[i], "r");
-            char buffer[1024];
             if (fTMP) {
+                char buffer[1024];
+                AddToBlockStack(blockStyle, NULL);
                 while (fgets(buffer, sizeof(buffer), fTMP)) {
                     Indent();
                     fprintf(outFile, "%s", buffer);
                 }
+                RemoveFromBlockStack(1);
             }
         }
         else {
@@ -106,8 +107,8 @@ int main(int argc, const char *argv[])
             fprintf(outFile, "<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
         }
     }
-    RemoveFromBlockStack(1+embeddedStyles);
-    AddToBlockStack(blockBody, NULL, NULL);
+    RemoveFromBlockStack(1);
+    AddToBlockStack(blockBody, NULL);
     
     if (documentTitle)
         fgets(line, 1024, markdownFile);
@@ -165,8 +166,10 @@ int ResolveBlock(char *s)
     int modifier = 0;
     int changeBlock = 0;
     block_enum newBlock = blockNone;
-    char className[64] = {0};
-    char styles[1024] = {0};
+//    char className[64] = {0};
+//    char styles[1024] = {0};
+    char tagCustomisation[1024] = "";
+    char buffer[1024];
     char *p;
     
     switch (s[0]) {
@@ -216,7 +219,7 @@ int ResolveBlock(char *s)
                     for (int i=listLevel; i<level; ++i) {
                         if (!allowChanges)
                             break;
-                        AddToBlockStack(listType==1?blockUl:blockOl, NULL, NULL);
+                        AddToBlockStack(listType==1?blockUl:blockOl, NULL);
                     }
                 }
                 else if (level<listLevel) {
@@ -246,13 +249,24 @@ int ResolveBlock(char *s)
     }
     
     if (modifier>=0) {
-        if (s[modifier]=='[' && (p=strchr(s+modifier, ']'))!=NULL) {
-            strncpy(className, s+modifier+1, p-(s+modifier+1));
+        if (s[modifier]=='^' && (p=strchr(s+modifier+1, '^'))!=NULL) {
+            strncpy(buffer, s+modifier+1, p-(s+modifier+1));
+            buffer[p-(s+modifier+1)] = '\0';
+            sprintf(tagCustomisation, "%s id=\"%s\"", tagCustomisation, buffer);
+            modifier = (int)(p-s)+1;
+        }
+        
+        if (s[modifier]=='$' && (p=strchr(s+modifier+1, '$'))!=NULL) {
+            strncpy(buffer, s+modifier+1, p-(s+modifier+1));
+            buffer[p-(s+modifier+1)] = '\0';
+            sprintf(tagCustomisation, "%s class=\"%s\"", tagCustomisation, buffer);
             modifier = (int)(p-s)+1;
         }
         
         if (s[modifier]=='{' && (p=strchr(s+modifier, '}'))!=NULL) {
-            strncpy(styles, s+modifier+1, p-(s+modifier+1));
+            strncpy(buffer, s+modifier+1, p-(s+modifier+1));
+            buffer[p-(s+modifier+1)] = '\0';
+            sprintf(tagCustomisation, "%s style=\"%s\"", tagCustomisation, buffer);
             modifier = (int)(p-s)+1;
         }
         
@@ -267,9 +281,9 @@ int ResolveBlock(char *s)
         }
         if (newBlock) {
             if (newBlock==blockCode) {
-                AddToBlockStack((block_enum)(newBlock+1), NULL, NULL);
+                AddToBlockStack((block_enum)(newBlock+1), NULL);
             }
-            AddToBlockStack(newBlock, className, styles);
+            AddToBlockStack(newBlock, tagCustomisation);
         }
         allowChanges = 0;
     }
@@ -279,6 +293,8 @@ int ResolveBlock(char *s)
 void WriteLine(char *s)
 {
     int isBold = 0, isItalic = 0, isCode = 0, isBL = 0, isStrike = 0;
+    char linkName[256], linkURL[1024];
+    int offset;
     
     StripNL(s);
     
@@ -349,6 +365,30 @@ void WriteLine(char *s)
                             fprintf(outFile, "<span class=\"span-strikethough\" style=\"text-decoration: line-through\">");
                         isStrike = !isStrike;
                         ++i;
+                    }
+                    break;
+                case '!':
+                    if (i+1<strlen(s) && LinkPresent(s+i+1, linkName, linkURL, &offset) && strlen(linkURL)) {
+                        int existsName = (int)strlen(linkName);
+                        char formatting[1024];
+                        if (existsName)
+                            sprintf(formatting, " title=\"%s\" alt=\"%s\"", linkName, linkName);
+                        else
+                            strcpy(formatting, "");
+                        fprintf(outFile, "<img src=\"%s\"%s />", linkURL, formatting);
+                        i+=offset+1;
+                    }
+                    else {
+                        fputc(s[i], outFile);
+                    }
+                    break;
+                case '[':
+                    if (LinkPresent(s+i, linkName, linkURL, &offset) && strlen(linkURL)) {
+                        fprintf(outFile, "<a href=\"%s\">%s</a>", linkURL, linkName);
+                        i+=offset;
+                    }
+                    else {
+                        fputc(s[i], outFile);
                     }
                     break;
                 default:
@@ -445,13 +485,10 @@ int IsListBlock(block_enum block)
     return block==blockUl||block==blockOl||block==blockLi;
 }
 
-void AddToBlockStack(block_enum block, char *className, char *styles)
+void AddToBlockStack(block_enum block, char *customisation)
 {
-    int isClass = className!=NULL && strcmp(className, "");
-    int isStyles = styles!=NULL && strcmp(styles, "");
-    
     Indent();
-    fprintf(outFile, "<%s%s%s%s%s%s%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block], isClass?" class=\"":"", isClass?className:"", isClass?"\"":"", isStyles?" style=\"":"", isStyles?styles:"", isStyles?"\"":"");
+    fprintf(outFile, "<%s%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block], customisation?customisation:"");
     blockStack.push(block);
 }
 
@@ -473,4 +510,16 @@ void ClearBlocks(void)
     while (blockStack.top()<blockHtml)
         RemoveFromBlockStack(1);
     listLevel = 0;
+}
+
+int LinkPresent(char *s, char *linkName, char *linkURL, int *offset)
+{
+    char *p, *q;
+    if (s[1]=='-' && (p=strstr(s+2, "-](")) && strlen(p)>=3 && (q=strchr(p+3, ')'))) {
+        strncpy(linkName, s+2, p-(s+2));
+        strncpy(linkURL, p+3, q-(p+3));
+        *offset = (int)(q-s);
+        return 1;
+    }
+    return 0;
 }
