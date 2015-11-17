@@ -35,24 +35,6 @@ int currentLine = 0, allowChanges = 0, listLevel = 0;
 FILE *outFile, *markdownFile;
 std::stack<block_enum> blockStack;
 
-void PrintStack(void)
-{
-    int h[32] = {-1};
-    int size =(int)blockStack.size();
-    for (int i=size-1; i >=0; --i) {
-        h[i] = blockStack.top();
-        blockStack.pop();
-    }
-    printf("Line %02d: ", currentLine);
-    if (!blockStack.empty())
-        printf("NOT EMPTY, DUN GOOFED");
-    for (int i=0; i<size; ++i) {
-        printf("%02d, ", h[i]);
-        blockStack.push((block_enum)h[i]);
-    }
-    printf("\n");
-}
-
 int main(int argc, const char *argv[])
 {
     char line[1024];
@@ -75,8 +57,6 @@ int main(int argc, const char *argv[])
     }
     
     embeddedStyles = argc>3&&!strcmp(argv[argc-1], "-embed");
-    
-    
     
     fprintf(outFile, "<!DOCTYPE html>\n");
     AddToBlockStack(blockHtml, NULL);
@@ -166,8 +146,6 @@ int ResolveBlock(char *s)
     int modifier = 0;
     int changeBlock = 0;
     block_enum newBlock = blockNone;
-//    char className[64] = {0};
-//    char styles[1024] = {0};
     char tagCustomisation[1024] = "";
     char buffer[1024];
     char *p;
