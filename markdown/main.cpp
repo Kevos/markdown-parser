@@ -258,9 +258,6 @@ int ResolveBlock(char *s)
             RemoveFromBlockStack(changeBlock);
         }
         if (newBlock) {
-//            if (newBlock==blockCode) {
-//                AddToBlockStack((block_enum)(newBlock+1), NULL);
-//            }
             AddToBlockStack(newBlock, tagCustomisation);
         }
         allowChanges = 0;
