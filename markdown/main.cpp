@@ -167,7 +167,7 @@ int ResolveBlock(char *s)
         case '`':
             if (!strncmp(s, "```", 3)) {
                 if (blockStack.top()==blockCode) {
-                    changeBlock = 2; // 1
+                    changeBlock = 1; //2 // 1
                 }
                 else {
                     changeBlock = 1;
@@ -258,9 +258,9 @@ int ResolveBlock(char *s)
             RemoveFromBlockStack(changeBlock);
         }
         if (newBlock) {
-            if (newBlock==blockCode) {
-                AddToBlockStack((block_enum)(newBlock+1), NULL);
-            }
+//            if (newBlock==blockCode) {
+//                AddToBlockStack((block_enum)(newBlock+1), NULL);
+//            }
             AddToBlockStack(newBlock, tagCustomisation);
         }
         allowChanges = 0;
@@ -466,7 +466,7 @@ int IsListBlock(block_enum block)
 void AddToBlockStack(block_enum block, char *customisation)
 {
     Indent();
-    fprintf(outFile, "<%s%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block], customisation?customisation:"");
+    fprintf(outFile, "%s<%s%s>\n", block==blockCode?"<pre>":"", block>=0x30?templateTags[block&0x0F]:tags[block], customisation?customisation:"");
     blockStack.push(block);
 }
 
@@ -479,7 +479,7 @@ void RemoveFromBlockStack(int n)
         
         blockStack.pop();
         Indent();
-        fprintf(outFile, "</%s>\n", block>=0x30?templateTags[block&0x0F]:tags[block]);
+        fprintf(outFile, "</%s>%s\n", block>=0x30?templateTags[block&0x0F]:tags[block], block==blockCode?"</pre>":"");
     }
 }
 
