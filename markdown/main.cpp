@@ -29,6 +29,7 @@ void RemoveFromBlockStack(int n);
 void ClearBlocks(void);
 int LinkPresent(char *s, char *linkName, char *linkURL, int *offset);
 int SpanBlockPresent(char *s, char *styleClass, int *offset);
+void RemoveExtension(char *s);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body", "style"};
@@ -41,23 +42,65 @@ int main(int argc, const char *argv[])
     char line[1024];
     int trimStart = 0;
     char *documentTitle = NULL;
-    int embeddedStyles;
+    int embeddedStyles = 0;
+    int noOverwrite = 0;
+    int toTerminal = 0;
+    int switchOffset = 1;
+    char outputName[64] = "", outputFileName[64] = "";
+    int outputFileModifier = -1;
     
-    if (argc<3) {
-        std::cout << "Too few arguments. Usage: " << argv[0] << " fOut fIn [style1 style2 ...]\n";
-        return 1;
+    while (switchOffset<argc && argv[switchOffset][0]=='-') {
+        for (int i=1; i<strlen(argv[switchOffset]); ++i) {
+            switch (argv[switchOffset][i]) {
+                case 'e':
+                    embeddedStyles = 1;
+                    break;
+                case 'n':
+                    noOverwrite = 1;
+                    break;
+                case 'o':
+                    toTerminal = 1;
+                default:
+                    break;
+            }
+        }
+        ++switchOffset;
     }
-    if ((markdownFile=fopen(argv[2], "r"))==NULL) {
-        std::cout << "Error opening " << argv[2] << " for reading\n";
-        return 1;
-    }
-    if ((outFile=fopen(argv[1], "w"))==NULL) {
-        std::cout << "Error opening " << argv[1] << " for writing\n";
-        fclose(markdownFile);
-        return 1;
-    }
+    --switchOffset;
     
-    embeddedStyles = argc>3&&!strcmp(argv[argc-1], "-embed");
+    if (argc+switchOffset<2) {
+        std::cout << "Too few arguments. Usage: " << argv[0] << " [-eno] fOut fIn [style1 style2 ...]\n";
+        return 1;
+    }
+    if ((markdownFile=fopen(argv[1+switchOffset], "r"))==NULL) {
+        std::cout << "Error opening " << argv[1+switchOffset] << " for reading\n";
+        return 1;
+    }
+    if (toTerminal) {
+        outFile = stdout;
+    }
+    else {
+        strcpy(outputName, argv[1+switchOffset]);
+        RemoveExtension(outputName);
+        do {
+            ++outputFileModifier;
+            if (outFile) {
+                fclose(outFile);
+            }
+            if (outputFileModifier)
+                sprintf(outputFileName, "%s_%d.htm", outputName, outputFileModifier);
+            else
+                sprintf(outputFileName, "%s.htm", outputName);
+        }
+        while ((outFile=fopen(outputFileName, "r"))!=NULL && noOverwrite);
+        
+        if ((outFile=fopen(outputFileName, "w"))==NULL) {
+            std::cout << "Error opening " << outputFileName << " for writing\n";
+            fclose(markdownFile);
+            return 1;
+        }
+        std::cout << "Writing to file \"" << outputFileName << "\"\n";
+    }
     
     fprintf(outFile, "<!DOCTYPE html>\n");
     AddToBlockStack(blockHtml, NULL);
@@ -70,7 +113,7 @@ int main(int argc, const char *argv[])
     
     Indent();
     fprintf(outFile, "<title>%s</title>\n", documentTitle!=NULL?StripNL(documentTitle):"**Untitled**");
-    for (int i=argc-embeddedStyles-1; i>2; --i) {
+    for (int i=argc-1; i>1+switchOffset; --i) {
         if (embeddedStyles) {
             FILE *fTMP = fopen(argv[i], "r");
             if (fTMP) {
@@ -298,6 +341,18 @@ void WriteLine(char *s)
         if (!isCode || s[i]=='`') {
             switch (s[i]) {
                 case '\\':
+                    if (s[i]=='<') {
+                        fprintf(outFile, "&lt;");
+                        ++i;
+                    }
+                    else if (s[i]=='>') {
+                        fprintf(outFile, "&gt;");
+                        ++i;
+                    }
+                    else if (s[i]=='&') {
+                        fprintf(outFile, "&amp;");
+                        ++i;
+                    }
                     fputc(s[++i], outFile);
                     break;
                 case '`':
@@ -391,8 +446,23 @@ void WriteLine(char *s)
                     break;
             }
         }
-        else
-            fputc(s[i], outFile);
+        else {
+            switch (s[i]) {
+                case '<':
+                    fprintf(outFile, "&lt;");
+                    break;
+                case '>':
+                    fprintf(outFile, "&gt;");
+                    break;
+                case '&':
+                    fprintf(outFile, "&amp;");
+                    break;
+                default:
+                    fputc(s[i], outFile);
+                    break;
+            }
+
+        }
     }
     
     for (int i=0; i<isBold+isItalic+isBL+isStrike+spanCount; ++i) {
@@ -537,4 +607,14 @@ int SpanBlockPresent(char *s, char *styleClass, int *offset)
         }
     }
     return 0;
+}
+
+void RemoveExtension(char *s)
+{
+    for (int i=(int)strlen(s)-1; i>=0; --i) {
+        if (s[i]=='.') {
+            s[i] = '\0';
+            break;
+        }
+    }
 }

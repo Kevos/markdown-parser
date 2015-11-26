@@ -1,6 +1,5 @@
 # Markdown Parser
 
-A custom markdown parser which uses a combination of the base markdown git markdown languages.
+A custom text parser which uses a markdown like syntax to format text.
 
-To-do:
-* Finish this Readme.
+
