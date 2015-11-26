@@ -28,6 +28,7 @@ void AddToBlockStack(block_enum block, char *customisation);
 void RemoveFromBlockStack(int n);
 void ClearBlocks(void);
 int LinkPresent(char *s, char *linkName, char *linkURL, int *offset);
+int SpanBlockPresent(char *s, char *styleClass, int *offset);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body", "style"};
@@ -267,8 +268,8 @@ int ResolveBlock(char *s)
 
 void WriteLine(char *s)
 {
-    int isBold = 0, isItalic = 0, isCode = 0, isBL = 0, isStrike = 0;
-    char linkName[256], linkURL[1024];
+    int isBold = 0, isItalic = 0, isCode = 0, isBL = 0, isStrike = 0, spanCount = 0;
+    char data256[256] = "", data1024[1024] = "";
     int offset;
     
     StripNL(s);
@@ -342,15 +343,33 @@ void WriteLine(char *s)
                         ++i;
                     }
                     break;
+                case ']':
+                    if (spanCount) {
+                        fprintf(outFile, "</span>");
+                        --spanCount;
+                    }
+                    else
+                        fputc(s[i], outFile);
+                    break;
+                case '$':
+                    if (SpanBlockPresent(s+i, data256, &offset) && strlen(data256)) {
+                        fprintf(outFile, "<span class=\"%s\">", data256);
+                        i+=offset;
+                        ++spanCount;
+                    }
+                    else {
+                        fputc(s[i], outFile);
+                    }
+                    break;
                 case '!':
-                    if (i+1<strlen(s) && LinkPresent(s+i+1, linkName, linkURL, &offset) && strlen(linkURL)) {
-                        int existsName = (int)strlen(linkName);
+                    if (i+1<strlen(s) && LinkPresent(s+i+1, data256, data1024, &offset) && strlen(data1024)) {
+                        int existsName = (int)strlen(data256);
                         char formatting[1024];
                         if (existsName)
-                            sprintf(formatting, " title=\"%s\" alt=\"%s\"", linkName, linkName);
+                            sprintf(formatting, " title=\"%s\" alt=\"%s\"", data256, data256);
                         else
                             strcpy(formatting, "");
-                        fprintf(outFile, "<img src=\"%s\"%s />", linkURL, formatting);
+                        fprintf(outFile, "<img src=\"%s\"%s />", data1024, formatting);
                         i+=offset+1;
                     }
                     else {
@@ -358,9 +377,10 @@ void WriteLine(char *s)
                     }
                     break;
                 case '[':
-                    if (LinkPresent(s+i, linkName, linkURL, &offset) && strlen(linkURL)) {
-                        fprintf(outFile, "<a href=\"%s\">%s</a>", linkURL, linkName);
+                    if (LinkPresent(s+i, data256, data1024, &offset) && strlen(data1024)) {
+                        fprintf(outFile, "<a href=\"%s\">%s</a>", data1024, data256);
                         i+=offset;
+                        ++spanCount;
                     }
                     else {
                         fputc(s[i], outFile);
@@ -375,7 +395,7 @@ void WriteLine(char *s)
             fputc(s[i], outFile);
     }
     
-    for (int i=0; i<isBold+isItalic+isBL+isStrike; ++i) {
+    for (int i=0; i<isBold+isItalic+isBL+isStrike+spanCount; ++i) {
         fprintf(outFile, "</span>");
     }
     
@@ -495,6 +515,26 @@ int LinkPresent(char *s, char *linkName, char *linkURL, int *offset)
         strncpy(linkURL, p+3, q-(p+3));
         *offset = (int)(q-s);
         return 1;
+    }
+    return 0;
+}
+
+int SpanBlockPresent(char *s, char *styleClass, int *offset)
+{
+    char *p = strchr(s+1, '$');
+    if (p && p[1]=='[') {
+        int openB = 1, closeB = 0;
+        for (int i=2; i<strlen(p); ++i) {
+            if (p[i]=='[' && p[i-1]!='\\')
+                ++openB;
+            else if (p[i]==']' && p[i-1]!='\\')
+                ++closeB;
+        }
+        if (closeB>=openB) {
+            strncpy(styleClass, s+1, p-(s+1));
+            *offset = (int)(p-s)+1;
+            return 1;
+        }
     }
     return 0;
 }
