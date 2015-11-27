@@ -125,11 +125,15 @@ int main(int argc, const char *argv[])
                     fprintf(outFile, "%s", buffer);
                 }
                 RemoveFromBlockStack(1);
+                std::cout << "Embedded \"" << argv[i] << "\"\n";
             }
+            else
+                std::cout << "File \"" << argv[i] << "\" does not exist\n";
         }
         else {
             Indent();
             fprintf(outFile, "<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
+            std::cout << "Linked to stylesheet located at \"" << argv[i] << "\"\n";
         }
     }
     RemoveFromBlockStack(1);
@@ -408,8 +412,11 @@ void WriteLine(char *s)
                         fputc(s[i], outFile);
                     break;
                 case '$':
-                    if (SpanBlockPresent(s+i, data256, &offset) && strlen(data256)) {
-                        fprintf(outFile, "<span class=\"%s\">", data256);
+                    if (SpanBlockPresent(s+i, data1024, &offset) && strlen(data1024)) {
+                        if (*data1024=='^')
+                            fprintf(outFile, "<span style=\"%s\">", data1024+1);
+                        else
+                            fprintf(outFile, "<span class=\"%s\">", data1024);
                         i+=offset;
                         ++spanCount;
                     }
