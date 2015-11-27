@@ -61,6 +61,7 @@ int main(int argc, const char *argv[])
                 case 'o':
                     toTerminal = 1;
                 default:
+                    std::cout << "Invalid switch \"" << argv[switchOffset][i] << "\"\n";
                     break;
             }
         }
@@ -99,7 +100,7 @@ int main(int argc, const char *argv[])
             fclose(markdownFile);
             return 1;
         }
-        std::cout << "Writing to file \"" << outputFileName << "\"\n";
+        std::cout << "Writing to file \"" << outputFileName << "\" (" << (embeddedStyles?"Embedding stylesheets":"Linking to stylesheets") << ")\n";
     }
     
     fprintf(outFile, "<!DOCTYPE html>\n");
