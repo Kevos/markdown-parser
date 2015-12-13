@@ -303,8 +303,11 @@ int ResolveBlock(char *s)
     
     
     if (allowChanges) {
-        if (changeBlock && blockStack.top()<0x30) {
-            RemoveFromBlockStack(changeBlock);
+        if (changeBlock && blockStack.top()<blockHtml) {
+            if (newBlock==blockLi)
+                RemoveFromBlockStack(changeBlock);
+            else
+                ClearBlocks();
         }
         if (newBlock) {
             AddToBlockStack(newBlock, tagCustomisation);
