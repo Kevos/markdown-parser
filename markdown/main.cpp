@@ -60,8 +60,9 @@ int main(int argc, const char *argv[])
                     break;
                 case 'o':
                     toTerminal = 1;
+                    break;
                 default:
-                    std::cout << "Invalid switch \"" << argv[switchOffset][i] << "\"\n";
+                    std::cerr << "Invalid switch \"" << argv[switchOffset][i] << "\"\n";
                     break;
             }
         }
@@ -238,40 +239,41 @@ int ResolveBlock(char *s)
         default:
             int level = 0, listType = IsListElement(s, &level, &modifier);
             
-            if (listType) {
-                if (!listLevel) {
-                    ClearBlocks();
-                }
-                if (level>listLevel) {
-                    for (int i=listLevel; i<level; ++i) {
-                        if (!allowChanges)
-                            break;
-                        AddToBlockStack(listType==1?blockUl:blockOl, NULL);
+            if (allowChanges) {
+                if (listType) {
+                    if (!listLevel) {
+                        ClearBlocks();
                     }
-                }
-                else if (level<listLevel) {
-                    changeBlock = (listLevel-level)*2;
+                    if (level>listLevel) {
+                        for (int i=listLevel; i<level; ++i) {
+                            if (!allowChanges)
+                                break;
+                            AddToBlockStack(listType==1?blockUl:blockOl, NULL);
+                        }
+                    }
+                    else if (level<listLevel) {
+                        changeBlock = (listLevel-level)*2;
+                    }
+                    else {
+                        if (blockStack.top()==blockLi) {
+                            if (allowChanges)
+                                RemoveFromBlockStack(1);
+                        }
+                    }
+                    newBlock = blockLi;
                 }
                 else {
-                    if (blockStack.top()==blockLi) {
-                        if (allowChanges)
-                            RemoveFromBlockStack(1);
+                    while (allowChanges && IsListBlock(blockStack.top()))
+                        RemoveFromBlockStack(1);
+                    if (blockStack.top()>1 && blockStack.top()!=blockCode && blockStack.top()<blockHtml) {
+                        changeBlock += 1;
+                    }
+                    if (blockStack.top()!=1) {
+                        newBlock = blockP;
                     }
                 }
-                newBlock = blockLi;
-            }
-            else {
-                while (allowChanges && IsListBlock(blockStack.top()))
-                    RemoveFromBlockStack(1);
-                if (blockStack.top()>1 && blockStack.top()!=blockCode && blockStack.top()<blockHtml) {
-                    changeBlock += 1;
-                }
-                if (blockStack.top()!=1) {
-                    newBlock = blockP;
-                }
-            }
-            if (allowChanges)
                 listLevel = level;
+            }
             break;
     }
     
