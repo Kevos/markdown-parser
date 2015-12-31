@@ -34,6 +34,7 @@ void RemoveExtension(char *s);
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body", "style"};
 int currentLine = 0, allowChanges = 0, listLevel = 0;
+int verbose = 0;
 FILE *outFile, *markdownFile;
 std::stack<block_enum> blockStack;
 
@@ -61,6 +62,9 @@ int main(int argc, const char *argv[])
                 case 'o':
                     toTerminal = 1;
                     break;
+                case 'v':;
+                    verbose = 1;
+                    break;
                 default:
                     std::cerr << "Invalid switch \"" << argv[switchOffset][i] << "\"\n";
                     break;
@@ -71,11 +75,11 @@ int main(int argc, const char *argv[])
     --switchOffset;
     
     if (argc+switchOffset<2) {
-        std::cout << "Too few arguments. Usage: " << argv[0] << " [-eno] fOut fIn [style1 style2 ...]\n";
+        std::cerr << "Too few arguments. Usage: " << argv[0] << " [-enov] fOut fIn [style1 style2 ...]\n";
         return 1;
     }
     if ((markdownFile=fopen(argv[1+switchOffset], "r"))==NULL) {
-        std::cout << "Error opening " << argv[1+switchOffset] << " for reading\n";
+        std::cerr << "Error opening " << argv[1+switchOffset] << " for reading\n";
         return 1;
     }
     if (toTerminal) {
@@ -97,11 +101,13 @@ int main(int argc, const char *argv[])
         while ((outFile=fopen(outputFileName, "r"))!=NULL && noOverwrite);
         
         if ((outFile=fopen(outputFileName, "w"))==NULL) {
-            std::cout << "Error opening " << outputFileName << " for writing\n";
+            std::cerr << "Error opening " << outputFileName << " for writing\n";
             fclose(markdownFile);
             return 1;
         }
-        std::cout << "Writing to file \"" << outputFileName << "\" (" << (embeddedStyles?"Embedding stylesheets":"Linking to stylesheets") << ")\n";
+        if (verbose) {
+            std::cout << "Writing to file \"" << outputFileName << "\" (" << (embeddedStyles?"Embedding stylesheets":"Linking to stylesheets") << ")\n";
+        }
     }
     
     fprintf(outFile, "<!DOCTYPE html>\n");
@@ -126,22 +132,37 @@ int main(int argc, const char *argv[])
                     fprintf(outFile, "%s", buffer);
                 }
                 RemoveFromBlockStack(1);
-                std::cout << "Embedded \"" << argv[i] << "\"\n";
+                if (verbose)
+                    std::cout << "Embedded \"" << argv[i] << "\"\n";
             }
-            else
+            else if (verbose)
                 std::cout << "File \"" << argv[i] << "\" does not exist\n";
         }
         else {
             Indent();
             fprintf(outFile, "<link rel=\"stylesheet\" href=\"%s\" type=\"text/css\" />\n", argv[i]);
-            std::cout << "Linked to stylesheet located at \"" << argv[i] << "\"\n";
+            if (verbose) {
+                std::cout << "Linked to stylesheet located at \"" << argv[i] << "\"\n";
+            }
         }
     }
-    RemoveFromBlockStack(1);
-    AddToBlockStack(blockBody, NULL);
     
     if (documentTitle)
         fgets(line, 1024, markdownFile);
+    
+    if (!strcmp(line, "@$\n")) {
+        AddToBlockStack(blockStyle, NULL);
+        fgets(line, 1024, markdownFile);
+        while (strcmp(line, "$@\n")) {
+             Indent();
+             fprintf(outFile, "%s", line);
+             fgets(line, 1024, markdownFile);
+        }
+        RemoveFromBlockStack(1);
+    }
+    
+    RemoveFromBlockStack(1);
+    AddToBlockStack(blockBody, NULL);
     
     do {
         ++currentLine;
@@ -299,7 +320,7 @@ int ResolveBlock(char *s)
             modifier = (int)(p-s)+1;
         }
         
-        if (blockStack.top()!=blockCode && modifier>=0 && s[modifier]==' ')
+        if (blockStack.top()!=blockCode && modifier>0 && s[modifier]==' ' && s[modifier+1]!=' ')
             ++modifier;
     }
     
@@ -364,6 +385,14 @@ void WriteLine(char *s)
                         ++i;
                     }
                     fputc(s[++i], outFile);
+                    break;
+                case ' ':
+                    if (!strncmp(s+i, "    ", 4)) {
+                        fprintf(outFile, "&emsp;");
+                        i += 3;
+                    }
+                    else
+                        fputc(s[i], outFile);
                     break;
                 case '`':
                     fprintf(outFile, "<%scode%s>", isCode?"/":"", isCode?"":" class=\"code-inline\"");
@@ -482,8 +511,8 @@ void WriteLine(char *s)
         fprintf(outFile, "</span>");
     }
     
-    if (isCode) {
-        std::cout << "WARNING (Line " << currentLine << ") -> No closing `\n";
+    if (isCode && verbose) {
+        std::cerr << "WARNING (Line " << currentLine << ") -> No closing `\n";
     }
 }
 
@@ -538,7 +567,7 @@ int IsListElement(char *s, int *level, int *cuttOff)
     while (IsWhitespace(s[offset]))
         ++offset;
     if (s[offset]=='-') {
-        *level = offset+1;
+        *level = offset/4+1;
         *cuttOff = offset+1;
         return 1;
     }
@@ -551,7 +580,7 @@ int IsListElement(char *s, int *level, int *cuttOff)
             return 0;
         }
         else {
-            *level = offset+1;
+            *level = offset/4+1;
             *cuttOff = i+1;
             return 2;
         }
