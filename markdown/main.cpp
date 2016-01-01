@@ -159,6 +159,7 @@ int main(int argc, const char *argv[])
              fgets(line, 1024, markdownFile);
         }
         RemoveFromBlockStack(1);
+        fgets(line, 1024, markdownFile);
     }
     
     RemoveFromBlockStack(1);
