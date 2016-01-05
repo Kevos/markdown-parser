@@ -223,6 +223,7 @@ int ResolveBlock(char *s)
     char *p;
     
     switch (s[0]) {
+        case '\r':
         case '\n':
             if (!strcmp(s, "\n") && allowChanges) {
                 ClearBlocks();
@@ -301,13 +302,22 @@ int ResolveBlock(char *s)
     
     if (modifier>=0) {
         if (s[modifier]=='^' && (p=strchr(s+modifier+1, '^'))!=NULL) {
+            if (!modifier && !changeBlock) {
+                changeBlock = 1;
+                newBlock = blockP;
+            }
             strncpy(buffer, s+modifier+1, p-(s+modifier+1));
             buffer[p-(s+modifier+1)] = '\0';
             sprintf(tagCustomisation, "%s id=\"%s\"", tagCustomisation, buffer);
             modifier = (int)(p-s)+1;
+            
         }
         
         if (s[modifier]=='$' && (p=strchr(s+modifier+1, '$'))!=NULL) {
+            if (!modifier && !changeBlock) {
+                changeBlock = 1;
+                newBlock = blockP;
+            }
             strncpy(buffer, s+modifier+1, p-(s+modifier+1));
             buffer[p-(s+modifier+1)] = '\0';
             sprintf(tagCustomisation, "%s class=\"%s\"", tagCustomisation, buffer);
@@ -315,6 +325,10 @@ int ResolveBlock(char *s)
         }
         
         if (s[modifier]=='{' && (p=strchr(s+modifier, '}'))!=NULL) {
+            if (!modifier && !changeBlock) {
+                changeBlock = 1;
+                newBlock = blockP;
+            }
             strncpy(buffer, s+modifier+1, p-(s+modifier+1));
             buffer[p-(s+modifier+1)] = '\0';
             sprintf(tagCustomisation, "%s style=\"%s\"", tagCustomisation, buffer);
@@ -373,19 +387,15 @@ void WriteLine(char *s)
         if (!isCode || s[i]=='`') {
             switch (s[i]) {
                 case '\\':
-                    if (s[i]=='<') {
+                    ++i;
+                    if (s[i]=='<')
                         fprintf(outFile, "&lt;");
-                        ++i;
-                    }
-                    else if (s[i]=='>') {
+                    else if (s[i]=='>')
                         fprintf(outFile, "&gt;");
-                        ++i;
-                    }
-                    else if (s[i]=='&') {
+                    else if (s[i]=='&')
                         fprintf(outFile, "&amp;");
-                        ++i;
-                    }
-                    fputc(s[++i], outFile);
+                    else
+                        fputc(s[i], outFile);
                     break;
                 case ' ':
                     if (!strncmp(s+i, "    ", 4)) {
