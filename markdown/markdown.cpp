@@ -30,11 +30,13 @@ void ClearBlocks(void);
 int LinkPresent(char *s, char *linkName, char *linkURL, int *offset);
 int SpanBlockPresent(char *s, char *styleClass, int *offset);
 void RemoveExtension(char *s);
+int IsHTMLCode(char *s, int *offset);
 
 char const *tags[] = {"", "p", "blockquote", "code", "pre", "ul", "ol", "li", "", "", "h1", "h2", "h3", "h4", "h5", "h6"};
 char const *templateTags[] = {"html", "head", "body", "style"};
-int currentLine = 0, allowChanges = 0, listLevel = 0;
+int currentLine = 0, allowChanges = 0, listLevel = 0, indentOffset = 0;
 int verbose = 0;
+int openTag = 0, closeTag = 0, plainWrite = 0;
 FILE *outFile, *markdownFile;
 std::stack<block_enum> blockStack;
 
@@ -190,11 +192,8 @@ int main(int argc, const char *argv[])
 
 void Indent(void)
 {
-    if (!blockStack.empty()) {
-        for (int i=0; i<(int)blockStack.size(); i++) {
-            fprintf(outFile, "\t");
-        }
-    }
+    for (int i=0; i<(int)blockStack.size()+indentOffset-openTag; ++i)
+        fprintf(outFile, "\t");
 }
 
 char *StripNL(char *s)
@@ -221,6 +220,39 @@ int ResolveBlock(char *s)
     char tagCustomisation[1024] = "";
     char buffer[1024];
     char *p;
+    
+    openTag = closeTag = 0, plainWrite = 0;
+    
+    switch (IsHTMLCode(s, &modifier)) {
+        case 1:
+            if (allowChanges) {
+                ClearBlocks();
+                ++indentOffset;
+                allowChanges = 0;
+            }
+            openTag = 1;
+            return modifier;
+        case 2:
+            if (allowChanges) {
+                ClearBlocks();
+                if (--indentOffset<0)
+                    indentOffset = 0;
+                allowChanges = 0;
+            }
+            closeTag = 1;
+            return modifier;
+        case 3:
+            if (allowChanges) {
+                ClearBlocks();
+                allowChanges = 0;
+            }
+            plainWrite = 1;
+            return modifier;
+        default:
+            break;
+    }
+    
+    modifier = 0;
     
     switch (s[0]) {
         case '\r':
@@ -382,6 +414,10 @@ void WriteLine(char *s)
         }
         return;
     }
+    if (openTag || closeTag || plainWrite) {
+        fprintf(outFile, "%s", s);
+        return;
+    }
     
     for (int i=0; i<strlen(s); ++i) {
         if (!isCode || s[i]=='`') {
@@ -457,8 +493,10 @@ void WriteLine(char *s)
                         fputc(s[i], outFile);
                     break;
                 case '$':
-                    if (SpanBlockPresent(s+i, data1024, &offset) && strlen(data1024)) {
-                        if (*data1024=='^')
+                    if (SpanBlockPresent(s+i, data1024, &offset)/* && */) {
+                        if (!strlen(data1024))
+                            fprintf(outFile, "<span>");
+                        else if (*data1024=='^')
                             fprintf(outFile, "<span style=\"%s\">", data1024+1);
                         else
                             fprintf(outFile, "<span class=\"%s\">", data1024);
@@ -487,8 +525,7 @@ void WriteLine(char *s)
                 case '[':
                     if (LinkPresent(s+i, data256, data1024, &offset) && strlen(data1024)) {
                         fprintf(outFile, "<a href=\"%s\">%s</a>", data1024, data256);
-                        i+=offset;
-                        ++spanCount;
+                        i+=offset+1;
                     }
                     else {
                         fputc(s[i], outFile);
@@ -542,7 +579,10 @@ void TerminateLine(void)
     }
     else {
         nextStart = ResolveBlock(nextLine);
-        if (blockStack.top()==blockP) {
+        if (openTag || closeTag || plainWrite) {
+            fprintf(outFile, "\n");
+        }
+        else if (blockStack.top()==blockP) {
             if (nextStart==0)
                 fprintf(outFile, "<br />\n");
             else
@@ -670,4 +710,24 @@ void RemoveExtension(char *s)
             break;
         }
     }
+}
+
+int IsHTMLCode(char *s, int *offset)
+{
+    int firstNonSpace = 0;
+    
+    for (; firstNonSpace<strlen(s); ++firstNonSpace)
+        if (s[firstNonSpace]!=' ' && s[firstNonSpace]!='\t')
+            break;
+    if (s[firstNonSpace]=='@') {
+        *offset = firstNonSpace+1;
+        return 3;
+    }
+    if (s[firstNonSpace]=='<' && s[strlen(s)-2]=='>') {
+        *offset = firstNonSpace;
+        if (s[firstNonSpace+1]=='/')
+            return 2;
+        return 1;
+    }
+    return 0;
 }
